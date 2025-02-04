@@ -2,13 +2,13 @@ cmake_minimum_required(VERSION 3.16)
 
 # change this to your desired addon name
 # make sure, that the name matches exactly the argument of PYBIND11_MODULE()
-set(addon_name ngsolve_addon_template)
+set(addon_name cf_comp)
 
 project(${addon_name})
 include(ngsolve_addon.cmake)
 
 # change the source file arguments to your source files
-add_ngsolve_addon(${addon_name} src/ngsolve_addon_template.cpp src/explore_mesh.cpp)
+add_ngsolve_addon(${addon_name} src/cf_comp.cpp)
 
 # install the compiled python module and __init__.py ( don't change this )
 set(install_dir ${ADDON_INSTALL_DIR_PYTHON}/${addon_name})

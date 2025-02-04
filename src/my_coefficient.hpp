@@ -2,7 +2,7 @@
 #define MY_COEFFICIENT
 
 #include <coefficient.hpp>
-
+#include <gridfunction.hpp>
 
 namespace ngfem
 {
@@ -11,66 +11,68 @@ namespace ngfem
     CoefficientFunction which computes the eigenvalues of
     a symmetric 2x2 matrix-valued CoefficientFunction
   */
-  class EigH_CF : public T_CoefficientFunction<EigH_CF>
+  class CF_Comp : public CoefficientFunction
   {
-    shared_ptr<CoefficientFunction> mat;
+    // f is the grid function and g the transformation
+    shared_ptr<ngcomp::GridFunctionCoefficientFunction> f;  
+    shared_ptr<CoefficientFunction> g;  
+
   public:
-    EigH_CF(shared_ptr<CoefficientFunction> _mat)
-      : mat(_mat)
-    {
-      if (_mat->Dimensions() != Array<int> ({ 2, 2}))
-        throw Exception("input must be a 2x2 matrix CF");
+    // Constructor: note that we inherit the dimension and height from f.
+    CF_Comp (const shared_ptr<ngcomp::GridFunctionCoefficientFunction> & af, 
+             const shared_ptr<CoefficientFunction> & ag)
+      : CoefficientFunction(af->Dimension()), f(af), g(ag)
+    { ; }
 
-      // we return a 2-vector, so the shape is (2,)
-      SetDimensions(Array<int>({2}));
+    // The Evaluate routine: given an integration point mip (with global point x)
+    // it computes new_coords = g(x), then finds the element of f's mesh that
+    // contains new_coords, and finally evaluates f there.
+    double Evaluate(const BaseMappedIntegrationPoint & ip) const{
+      throw Exception("wrong evaluate");
+      return 0.0;
     }
-
-
-    // evaluates for all points of the integration rule ir
-    // the function is generated for the generic types T,
-    // and will be instantiated for 
-    // double, complex, AutoDiff, SIMD<double>, ...
-    template <typename MIR, typename T, ORDERING ORD>
-    void T_Evaluate (const MIR & ir,
-                     BareSliceMatrix<T,ORD> result) const
+    void Evaluate (const BaseMappedIntegrationPoint & mip,
+                           FlatVector<double> res) const override
     {
-      // create a temporary matrix on the stack
-      STACK_ARRAY(T, hmem, 4*ir.Size());
-      FlatMatrix<T,ORD> temp(4, ir.Size(), &hmem[0]);
+      // First, compute y = g(x)
+      LocalHeapMem<10000> lh2 ("GF_Comp, Eval");
+      cout << "mip is " << mip << endl;
+      int gd = g->Dimension();
+      Vector new_coords(gd);
+      g->Evaluate(mip, new_coords);
+      cout << "trafo coords are: " << new_coords << endl;
+      // Create a new IntegrationPoint whose global coordinates are the transformed ones.
+      // MappedIntegrationPoint<3,3> tip;
+      
+      
+      // We expect f to be a GridFunction. In that case, we can perform a mesh search.
+      
 
-      // evalute input coefficient function, a 2x2 matrix
-      mat->Evaluate (ir, temp);
-
-      for (size_t i = 0; i < ir.Size(); i++)
-        {
-          // matrix entries are [ [a,b], [b,c] ]
-          T a = temp(0,i);
-          T b = temp(1,i);
-          T c = temp(3,i);
-
-          result(0,i) = 0.5*(a+c) + sqrt ( 0.25*(a-c)*(a-c) + b*b );
-          result(1,i) = 0.5*(a+c) - sqrt ( 0.25*(a-c)*(a-c) + b*b );
-        }
+      // Get the finite element space and the mesh access object.
+      // f->GetGridFunctionPtr
+      const auto fes = f->GetGridFunctionPtr()->GetFESpace();
+      const auto & ma = fes->GetMeshAccess();
+      IntegrationPoint tip(new_coords[0], new_coords[1], new_coords[2]);
+      cout << "tip is " << tip << endl;
+      // f->Evaluate()
+      // auto res = ma->FindElementOfPoint();
+      // Find the element in which tip.x lies. The call below should also update 'tip'
+      // with the correct local coordinates. (The actual method name may vary with NGsolve version.)
+      auto elnr = ma->FindElementOfPoint(tip.Point(), tip,false,0);
+      std::cout << "elnr is " << elnr;
+      if (elnr.IsInvalid()){
+        // throw Exception("el not in mesh");
+        // cout << "el not in mesh, mip is " << mip.GetPoint() << endl;
+        ConstantCoefficientFunction(1).Evaluate(mip,res);
+        return;}
+      cout << "computing mip2" << endl;
+      MappedIntegrationPoint<3,3> mip2(tip,ma->GetTrafo(elnr, lh2));
+      cout << "mip2 is " << mip2;
+      // Now evaluate the grid function f at the found element and local coordinates.
+      f->Evaluate(mip2,res);
     }
+    
 
-    // evaluates for all points of an integration rule
-    // the input values are provided by caller
-    template <typename MIR, typename T, ORDERING ORD>
-    void T_Evaluate (const MIR & ir,
-                     FlatArray<BareSliceMatrix<T,ORD>> input,                       
-                     BareSliceMatrix<T,ORD> result) const
-    {
-      auto temp = input[0];
-      for (size_t i = 0; i < ir.Size(); i++)
-        {
-          // matrix entries are [ [a,b], [b,c] ]          
-          T a = temp(0,i);
-          T b = temp(1,i);
-          T c = temp(3,i);
-          result(0,i) = 0.5*(a+c) + sqrt ( 0.25*(a-c)*(a-c) + b*b );
-          result(1,i) = 0.5*(a+c) - sqrt ( 0.25*(a-c)*(a-c) + b*b );
-        }
-    }
   };
 }
 
